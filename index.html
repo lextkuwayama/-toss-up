@@ -311,6 +311,122 @@
     padding:3px 7px;
   }
 
+  /* ---------- タブ ---------- */
+  .tabs{
+    display:flex;
+    gap:2px;
+    margin-bottom:24px;
+    background:#e4e8ee;
+    padding:3px;
+    border-radius:4px;
+  }
+  .tab-btn{
+    flex:1;
+    border:none;
+    background:transparent;
+    padding:9px 6px;
+    font-size:12.5px;
+    color:var(--muted);
+    cursor:pointer;
+    border-radius:3px;
+    font-family:inherit;
+  }
+  .tab-btn.active{
+    background:#fff;
+    color:var(--navy-deep);
+    font-weight:bold;
+    box-shadow:0 1px 3px rgba(20,30,50,.15);
+  }
+
+  /* ---------- 履歴タブ ---------- */
+  .history-actions{
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+    margin-bottom:18px;
+  }
+  .btn-secondary{
+    width:100%;
+    padding:10px;
+    background:#fff;
+    color:var(--navy-deep);
+    border:1px solid var(--navy-deep);
+    border-radius:3px;
+    font-size:12.5px;
+    font-family:inherit;
+    cursor:pointer;
+    letter-spacing:.02em;
+  }
+  .btn-secondary:hover{background:#eef2f7;}
+  .import-label{
+    display:block;
+    width:100%;
+    text-align:center;
+    padding:10px;
+    background:#fff;
+    color:var(--navy-deep);
+    border:1px solid var(--navy-deep);
+    border-radius:3px;
+    font-size:12.5px;
+    cursor:pointer;
+    margin:0;
+  }
+  .import-label:hover{background:#eef2f7;}
+  .history-note{
+    font-size:11px;
+    color:var(--muted);
+    line-height:1.6;
+    margin-bottom:14px;
+  }
+  .history-list{
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+  }
+  .history-empty{
+    font-size:12px;
+    color:var(--muted);
+    padding:20px 4px;
+    text-align:center;
+  }
+  .history-item{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    background:#fff;
+    border:1px solid var(--line);
+    border-radius:3px;
+    padding:10px 12px;
+  }
+  .history-main{
+    flex:1;
+    cursor:pointer;
+    min-width:0;
+  }
+  .history-name{
+    font-size:13px;
+    font-weight:bold;
+    color:var(--text);
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+  .history-meta{
+    font-size:11px;
+    color:var(--muted);
+    margin-top:2px;
+  }
+  .history-delete{
+    border:none;
+    background:none;
+    color:var(--muted);
+    cursor:pointer;
+    font-size:14px;
+    padding:2px 4px;
+    flex:none;
+  }
+  .history-delete:hover{color:var(--danger);}
+
 
 </style>
 </head>
@@ -323,6 +439,12 @@
     <div class="brand"><span class="mark"></span><h1>提案資料ジェネレーター</h1></div>
     <div class="brand-sub">税務部 → 営業部 共有ミーティング資料</div>
 
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="input">入力フォーム</button>
+      <button class="tab-btn" data-tab="history">履歴</button>
+    </div>
+
+    <div id="tab-input">
     <div class="field-group">
       <h2><span class="no">00</span> 基本情報</h2>
       <label>会社名</label>
@@ -372,6 +494,19 @@
       <h2><span class="no">03</span> 現状進捗</h2>
       <label>進捗状況・経緯</label>
       <textarea id="progress" placeholder="これまでの対応状況、直近のやり取り、課題などを記載"></textarea>
+    </div>
+    </div><!-- /#tab-input -->
+
+    <div id="tab-history" style="display:none;">
+      <div class="history-note">入力した内容を「履歴」として保存できます。保存した項目をクリックするとフォームに復元されます。JSONで書き出しておけば、別のPCやブラウザでも一覧をまるごと復元できます。</div>
+      <div class="history-actions">
+        <button class="btn-secondary" id="saveHistoryBtn">現在の内容を履歴に保存</button>
+        <button class="btn-secondary" id="exportJsonBtn">履歴をJSONで書き出す</button>
+        <label class="import-label">JSONを読み込んで復元
+          <input type="file" id="importJsonInput" accept="application/json" style="display:none;">
+        </label>
+      </div>
+      <div class="history-list" id="historyList"></div>
     </div>
 
     <div class="generate-bar">
@@ -466,7 +601,7 @@ function setBlock(id, val){
 }
 
 ['companyName','fiscalPeriod','createdDate','authorName','toName','bizContent','specialNotes','progress']
-  .forEach(id => $(id).addEventListener('input', updatePreview));
+  .forEach(id => $(id).addEventListener('input', ()=>{ updatePreview(); scheduleDraftSave(); }));
 
 /* ---------------- ファイルアップロード ---------------- */
 const dropzone = $('dropzone');
@@ -495,6 +630,7 @@ async function handleFiles(fileListRaw){
   }
   renderFileList();
   updatePreview();
+  saveDraft();
 }
 
 function renderFileList(){
@@ -523,9 +659,220 @@ function renderFileList(){
       if(act === 'down' && i<uploadedFiles.length-1){ [uploadedFiles[i+1], uploadedFiles[i]] = [uploadedFiles[i], uploadedFiles[i+1]]; }
       renderFileList();
       updatePreview();
+      saveDraft();
     });
   });
 }
+
+/* ================= 保存・履歴・JSON入出力 ================= */
+
+// ---- ArrayBuffer <-> base64 変換(PDFの添付データをJSON/localStorageに保存するため) ----
+function arrayBufferToBase64(buffer){
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  for(let i=0;i<bytes.length;i+=chunkSize){
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i+chunkSize));
+  }
+  return btoa(binary);
+}
+function base64ToArrayBuffer(base64){
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for(let i=0;i<binary.length;i++){ bytes[i] = binary.charCodeAt(i); }
+  return bytes.buffer;
+}
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// ---- 現在のフォーム内容を1つのオブジェクトにまとめる/復元する ----
+function getCurrentFormState(){
+  return {
+    companyName: $('companyName').value,
+    fiscalPeriod: $('fiscalPeriod').value,
+    createdDate: $('createdDate').value,
+    authorName: $('authorName').value,
+    toName: $('toName').value,
+    bizContent: $('bizContent').value,
+    specialNotes: $('specialNotes').value,
+    progress: $('progress').value,
+    files: uploadedFiles.map(f => ({name:f.name, pageCount:f.pageCount, data:arrayBufferToBase64(f.arrayBuffer)}))
+  };
+}
+
+function applyFormState(state){
+  $('companyName').value = state.companyName || '';
+  $('fiscalPeriod').value = state.fiscalPeriod || '';
+  $('createdDate').value = state.createdDate || todayStr();
+  $('authorName').value = state.authorName || '';
+  $('toName').value = state.toName || '';
+  $('bizContent').value = state.bizContent || '';
+  $('specialNotes').value = state.specialNotes || '';
+  $('progress').value = state.progress || '';
+  uploadedFiles = (state.files || []).map(f => ({
+    name: f.name,
+    pageCount: f.pageCount,
+    arrayBuffer: base64ToArrayBuffer(f.data)
+  }));
+  renderFileList();
+  updatePreview();
+}
+
+// ---- キャッシュ(自動保存) ----
+const DRAFT_KEY = 'teisho_draft_v1';
+let draftTimer = null;
+
+function saveDraft(){
+  try{
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(getCurrentFormState()));
+  }catch(err){
+    console.warn('自動保存に失敗しました(添付ファイルが大きい可能性があります):', err);
+  }
+}
+function scheduleDraftSave(){
+  clearTimeout(draftTimer);
+  draftTimer = setTimeout(saveDraft, 500);
+}
+function loadDraft(){
+  try{
+    const raw = localStorage.getItem(DRAFT_KEY);
+    if(raw){
+      applyFormState(JSON.parse(raw));
+      return true;
+    }
+  }catch(err){
+    console.warn('自動保存の復元に失敗しました:', err);
+  }
+  return false;
+}
+
+// ---- 履歴(明示的に保存する複数件のスナップショット) ----
+const HISTORY_KEY = 'teisho_history_v1';
+let historyList = [];
+
+function loadHistory(){
+  try{
+    const raw = localStorage.getItem(HISTORY_KEY);
+    historyList = raw ? JSON.parse(raw) : [];
+  }catch(err){
+    historyList = [];
+  }
+}
+function persistHistory(){
+  try{
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(historyList));
+  }catch(err){
+    alert('履歴の保存に失敗しました。添付PDFが多く、ブラウザの保存容量を超えている可能性があります。こまめにJSON書き出しでバックアップすることをおすすめします。');
+    console.error(err);
+  }
+}
+
+function saveCurrentToHistory(){
+  const entry = Object.assign(
+    { id: 'h_' + Date.now() + '_' + Math.random().toString(36).slice(2,7), savedAt: new Date().toISOString() },
+    getCurrentFormState()
+  );
+  historyList.unshift(entry);
+  persistHistory();
+  renderHistoryList();
+}
+
+function renderHistoryList(){
+  const box = $('historyList');
+  if(!historyList.length){
+    box.innerHTML = '<div class="history-empty">保存された履歴はまだありません。</div>';
+    return;
+  }
+  box.innerHTML = historyList.map(entry => {
+    const dt = new Date(entry.savedAt);
+    const dtStr = `${dt.getFullYear()}/${String(dt.getMonth()+1).padStart(2,'0')}/${String(dt.getDate()).padStart(2,'0')} ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
+    const fileNote = entry.files && entry.files.length ? ` ・添付${entry.files.length}件` : '';
+    return `
+      <div class="history-item">
+        <div class="history-main" data-id="${entry.id}">
+          <div class="history-name">${entry.companyName ? escapeHtml(entry.companyName) : '(会社名未入力)'}</div>
+          <div class="history-meta">${dtStr}${fileNote}</div>
+        </div>
+        <button class="history-delete" data-id="${entry.id}" title="この履歴を削除">✕</button>
+      </div>`;
+  }).join('');
+
+  box.querySelectorAll('.history-main').forEach(el => {
+    el.addEventListener('click', () => {
+      const entry = historyList.find(h => h.id === el.dataset.id);
+      if(entry){
+        applyFormState(entry);
+        saveDraft();
+        switchTab('input');
+      }
+    });
+  });
+  box.querySelectorAll('.history-delete').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if(confirm('この履歴を削除しますか?')){
+        historyList = historyList.filter(h => h.id !== btn.dataset.id);
+        persistHistory();
+        renderHistoryList();
+      }
+    });
+  });
+}
+
+// ---- タブ切り替え ----
+function switchTab(tab){
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  $('tab-input').style.display = tab === 'input' ? '' : 'none';
+  $('tab-history').style.display = tab === 'history' ? '' : 'none';
+}
+document.querySelectorAll('.tab-btn').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
+
+// ---- 履歴の保存ボタン ----
+$('saveHistoryBtn').addEventListener('click', () => {
+  saveCurrentToHistory();
+  alert('現在の内容を履歴に保存しました。');
+});
+
+// ---- JSON書き出し(履歴一覧すべて) ----
+$('exportJsonBtn').addEventListener('click', () => {
+  const payload = { exportedAt: new Date().toISOString(), history: historyList };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `提案資料_履歴_${todayStr()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+});
+
+// ---- JSON読み込み(一覧をまるごと復元) ----
+$('importJsonInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if(!file) return;
+  try{
+    const text = await file.text();
+    const parsed = JSON.parse(text);
+    const imported = Array.isArray(parsed) ? parsed : (parsed.history || []);
+    if(!Array.isArray(imported)) throw new Error('形式が不正です');
+
+    const map = new Map(historyList.map(h => [h.id, h]));
+    imported.forEach(item => {
+      if(!item.id){ item.id = 'h_' + Date.now() + '_' + Math.random().toString(36).slice(2,7); }
+      map.set(item.id, item);
+    });
+    historyList = Array.from(map.values()).sort((a,b) => new Date(b.savedAt) - new Date(a.savedAt));
+    persistHistory();
+    renderHistoryList();
+    alert(`${imported.length}件の履歴を読み込みました。`);
+  }catch(err){
+    console.error(err);
+    alert('JSONの読み込みに失敗しました。ファイル形式をご確認ください。');
+  }
+  e.target.value = '';
+});
 
 /* ---------------- PDF生成 ---------------- */
 async function sectionToPdfBytes(sectionEl){
@@ -588,6 +935,7 @@ $('generateBtn').addEventListener('click', async () => {
     URL.revokeObjectURL(url);
 
     setStatus('完了しました。ダウンロードフォルダをご確認ください。');
+    saveCurrentToHistory();
   }catch(err){
     console.error(err);
     setStatus('エラーが発生しました。コンソールをご確認ください。');
@@ -597,6 +945,9 @@ $('generateBtn').addEventListener('click', async () => {
   }
 });
 
+loadHistory();
+renderHistoryList();
+loadDraft();
 updatePreview();
 </script>
 </body>
