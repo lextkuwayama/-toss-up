@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>提案資料ジェネレーター(税務部→営業部)</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<style>
+  :root{
+    --navy:#1c3350;
+    --navy-deep:#0f2038;
+    --gold:#a97c2f;
+    --paper:#ffffff;
+    --bg:#eef1f5;
+    --panel:#f6f7f9;
+    --line:#d9dee5;
+    --text:#232a33;
+    --muted:#6b7480;
+    --danger:#b3452c;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:"Yu Gothic","游ゴシック","Hiragino Kaku Gothic ProN","Meiryo",sans-serif;
+    background:var(--bg);
+    color:var(--text);
+  }
+  .app{
+    display:grid;
+    grid-template-columns: 420px 1fr;
+    min-height:100vh;
+  }
+  @media (max-width: 900px){
+    .app{grid-template-columns: 1fr;}
+  }
+
+  /* ---------- 左パネル(入力フォーム) ---------- */
+  .form-panel{
+    background:var(--panel);
+    border-right:1px solid var(--line);
+    padding:28px 26px 100px;
+    overflow-y:auto;
+  }
+  .brand{
+    display:flex;
+    align-items:baseline;
+    gap:10px;
+    margin-bottom:4px;
+  }
+  .brand .mark{
+    width:10px;height:10px;background:var(--navy);
+    display:inline-block;flex:none;
+  }
+  .brand h1{
+    font-size:16px;
+    letter-spacing:.04em;
+    margin:0;
+    color:var(--navy-deep);
+  }
+  .brand-sub{
+    font-size:11.5px;
+    color:var(--muted);
+    margin:2px 0 26px 20px;
+    letter-spacing:.03em;
+  }
+
+  .field-group{
+    margin-bottom:22px;
+  }
+  .field-group h2{
+    font-size:12px;
+    color:var(--navy);
+    letter-spacing:.08em;
+    margin:0 0 10px;
+    padding-bottom:6px;
+    border-bottom:2px solid var(--navy);
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .field-group h2 .no{
+    font-family:"Georgia", serif;
+    font-size:11px;
+    color:var(--gold);
+  }
+  label{
+    display:block;
+    font-size:12px;
+    color:var(--muted);
+    margin:12px 0 5px;
+  }
+  input[type=text], input[type=date], textarea, select{
+    width:100%;
+    font-family:inherit;
+    font-size:13px;
+    padding:9px 10px;
+    border:1px solid var(--line);
+    border-radius:3px;
+    background:#fff;
+    color:var(--text);
+    resize:vertical;
+  }
+  input:focus, textarea:focus, select:focus{
+    outline:2px solid var(--navy);
+    outline-offset:1px;
+    border-color:var(--navy);
+  }
+  textarea{min-height:74px; line-height:1.6;}
+  .row2{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+
+  /* ファイルアップロード */
+  .dropzone{
+    border:1.5px dashed #b7c0cc;
+    border-radius:4px;
+    padding:18px 12px;
+    text-align:center;
+    font-size:12.5px;
+    color:var(--muted);
+    background:#fff;
+    cursor:pointer;
+    transition:.15s;
+  }
+  .dropzone:hover, .dropzone.drag{
+    border-color:var(--navy);
+    background:#eef2f7;
+    color:var(--navy);
+  }
+  .file-list{
+    margin-top:10px;
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+  }
+  .file-item{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    background:#fff;
+    border:1px solid var(--line);
+    border-radius:3px;
+    padding:7px 9px;
+    font-size:12px;
+  }
+  .file-item .fname{
+    flex:1;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+  .file-item .fpages{
+    color:var(--muted);
+    font-size:11px;
+    flex:none;
+  }
+  .file-item button{
+    border:none;
+    background:none;
+    color:var(--muted);
+    cursor:pointer;
+    font-size:14px;
+    line-height:1;
+    padding:2px 4px;
+  }
+  .file-item button:hover{color:var(--danger);}
+  .file-item .order-btns{display:flex; gap:2px;}
+  .file-item .order-btns button{color:var(--navy);}
+
+  .hint{
+    font-size:11px;
+    color:var(--muted);
+    margin-top:6px;
+    line-height:1.5;
+  }
+
+  .generate-bar{
+    position:sticky;
+    bottom:-100px;
+    margin-top:10px;
+    padding-top:14px;
+  }
+  .btn-generate{
+    width:100%;
+    padding:14px;
+    background:var(--navy-deep);
+    color:#fff;
+    border:none;
+    border-radius:3px;
+    font-size:13.5px;
+    letter-spacing:.05em;
+    cursor:pointer;
+  }
+  .btn-generate:hover{background:var(--navy);}
+  .btn-generate:disabled{background:#9aa4b0; cursor:wait;}
+  .status-line{
+    font-size:11.5px;
+    color:var(--muted);
+    margin-top:8px;
+    min-height:16px;
+  }
+
+  /* ---------- 右パネル(プレビュー) ---------- */
+  .preview-panel{
+    padding:34px;
+    overflow-y:auto;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:26px;
+  }
+  .preview-label{
+    align-self:flex-start;
+    font-size:11px;
+    color:var(--muted);
+    letter-spacing:.08em;
+    margin-left:2px;
+  }
+
+  .sheet{
+    width:794px;
+    min-height:1123px;
+    background:var(--paper);
+    box-shadow:0 2px 14px rgba(20,30,50,.13);
+    padding:56px 60px;
+    position:relative;
+  }
+  .sheet-header{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-end;
+    border-bottom:3px solid var(--navy-deep);
+    padding-bottom:14px;
+    margin-bottom:30px;
+  }
+  .sheet-header .doc-title{
+    font-size:22px;
+    font-weight:bold;
+    color:var(--navy-deep);
+    letter-spacing:.03em;
+  }
+  .sheet-header .doc-meta{
+    text-align:right;
+    font-size:11.5px;
+    color:var(--muted);
+    line-height:1.6;
+  }
+  .company-line{
+    display:flex;
+    align-items:baseline;
+    gap:14px;
+    margin-bottom:26px;
+  }
+  .company-line .cname{
+    font-size:19px;
+    font-weight:bold;
+    color:var(--text);
+  }
+  .company-line .cperiod{
+    font-size:12px;
+    color:var(--muted);
+  }
+
+  .block{margin-bottom:26px;}
+  .block-title{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    font-size:13px;
+    font-weight:bold;
+    color:var(--navy-deep);
+    margin-bottom:10px;
+  }
+  .block-title .idx{
+    width:20px;height:20px;
+    background:var(--navy-deep);
+    color:#fff;
+    font-size:11px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    flex:none;
+    font-family:Georgia, serif;
+  }
+  .block-body{
+    font-size:12.5px;
+    line-height:1.85;
+    color:var(--text);
+    white-space:pre-wrap;
+    padding-left:30px;
+    border-left:2px solid var(--line);
+  }
+  .block-body.empty{color:#a8afb8; font-style:normal;}
+
+  .insert-marker{
+    margin:0 0 26px;
+    border:1.5px dashed var(--gold);
+    background:#fbf6ea;
+    color:#8a6a24;
+    font-size:12px;
+    padding:14px 16px;
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+  .insert-marker .tag{
+    font-size:10px;
+    letter-spacing:.06em;
+    background:var(--gold);
+    color:#fff;
+    padding:3px 7px;
+  }
+
+
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ============ 左:入力フォーム ============ -->
+  <div class="form-panel">
+    <div class="brand"><span class="mark"></span><h1>提案資料ジェネレーター</h1></div>
+    <div class="brand-sub">税務部 → 営業部 共有ミーティング資料</div>
+
+    <div class="field-group">
+      <h2><span class="no">00</span> 基本情報</h2>
+      <label>会社名</label>
+      <input type="text" id="companyName" placeholder="例:株式会社サンプル商事">
+      <div class="row2">
+        <div>
+          <label>対象決算期</label>
+          <input type="text" id="fiscalPeriod" placeholder="例:第12期(2025年3月期)">
+        </div>
+        <div>
+          <label>作成日</label>
+          <input type="date" id="createdDate">
+        </div>
+      </div>
+      <div class="row2">
+        <div>
+          <label>作成者(税務部)</label>
+          <input type="text" id="authorName" placeholder="例:税務部 山田">
+        </div>
+        <div>
+          <label>宛先(営業部)</label>
+          <input type="text" id="toName" placeholder="例:営業部 御中">
+        </div>
+      </div>
+    </div>
+
+    <div class="field-group">
+      <h2><span class="no">01</span> 概要</h2>
+      <label>事業内容</label>
+      <textarea id="bizContent" placeholder="主な事業内容、業種、取引先の特徴などを記載"></textarea>
+      <label>特殊事項</label>
+      <textarea id="specialNotes" placeholder="株主構成の変更、代表者交代、税務調査、訴訟、特殊な取引など"></textarea>
+    </div>
+
+    <div class="field-group">
+      <h2><span class="no">02</span> 決算書の添付</h2>
+      <div class="dropzone" id="dropzone">
+        PDFをドラッグ&ドロップ、またはクリックして選択<br>
+        <span style="font-size:11px;">(複数ファイル可・貸借対照表/損益計算書など)</span>
+      </div>
+      <input type="file" id="fileInput" accept="application/pdf" multiple style="display:none;">
+      <div class="file-list" id="fileList"></div>
+      <div class="hint">※ ここで添付したPDFは、そのままのページ内容(数値・文字)で最終PDFに挿入されます。並び順は矢印で入れ替えできます。</div>
+    </div>
+
+    <div class="field-group">
+      <h2><span class="no">03</span> 現状進捗</h2>
+      <label>進捗状況・経緯</label>
+      <textarea id="progress" placeholder="これまでの対応状況、直近のやり取り、課題などを記載"></textarea>
+    </div>
+
+    <div class="generate-bar">
+      <button class="btn-generate" id="generateBtn">この内容でPDFを生成・ダウンロード</button>
+      <div class="status-line" id="statusLine"></div>
+    </div>
+  </div>
+
+  <!-- ============ 右:プレビュー ============ -->
+  <div class="preview-panel">
+
+    <div class="preview-label">PAGE 1 — 概要・現状進捗</div>
+    <div class="sheet" id="page-overview">
+      <div class="sheet-header">
+        <div class="doc-title">提案検討資料</div>
+      </div>
+      <div class="company-line">
+        <span class="cname" id="previewCompanyName">(会社名未入力)</span>
+        <span class="cperiod" id="previewPeriodInline"></span>
+      </div>
+
+      <div class="block">
+        <div class="block-title"><span class="idx">1</span>事業内容</div>
+        <div class="block-body empty" id="previewBiz">未入力</div>
+      </div>
+      <div class="block">
+        <div class="block-title"><span class="idx">2</span>特殊事項</div>
+        <div class="block-body empty" id="previewSpecial">未入力</div>
+      </div>
+      <div class="block">
+        <div class="block-title"><span class="idx">3</span>現状進捗</div>
+        <div class="block-body empty" id="previewProgress">未入力</div>
+      </div>
+
+    </div>
+
+    <div class="preview-label">PAGE 2 — 決算書(添付PDFがそのまま挿入されます)</div>
+    <div class="insert-marker" style="width:794px;">
+      <span class="tag">INSERT</span>
+      <span id="insertMarkerText">添付ファイル未選択:PDFを添付するとここに実際のページが挿入されます</span>
+    </div>
+
+  </div>
+</div>
+
+<script>
+let uploadedFiles = []; // {name, arrayBuffer, pageCount}
+
+const $ = id => document.getElementById(id);
+
+function todayStr(){
+  const d = new Date();
+  return d.toISOString().slice(0,10);
+}
+$('createdDate').value = todayStr();
+
+function fillOrDash(v){ return v && v.trim() ? v.trim() : '—'; }
+
+function updatePreview(){
+  const company = $('companyName').value.trim();
+  const period = $('fiscalPeriod').value.trim();
+  const created = $('createdDate').value;
+  const author = $('authorName').value.trim();
+  const to = $('toName').value.trim();
+
+  $('previewCompanyName').textContent = company || '(会社名未入力)';
+  $('previewCompanyName').classList.toggle('empty', !company);
+  $('previewPeriodInline').textContent = period ? '(' + period + ')' : '';
+
+  setBlock('previewBiz', $('bizContent').value);
+  setBlock('previewSpecial', $('specialNotes').value);
+  setBlock('previewProgress', $('progress').value);
+
+  // 挿入マーカー(件数のみ表示、ファイル名は出さない)
+  if(uploadedFiles.length){
+    $('insertMarkerText').textContent = `添付 ${uploadedFiles.length} ファイル・計${uploadedFiles.reduce((s,f)=>s+f.pageCount,0)}ページがここに挿入されます`;
+  } else {
+    $('insertMarkerText').textContent = '添付ファイル未選択:PDFを添付するとここに実際のページが挿入されます';
+  }
+
+}
+
+function setBlock(id, val){
+  const el = $(id);
+  if(val && val.trim()){
+    el.textContent = val;
+    el.classList.remove('empty');
+  } else {
+    el.textContent = '未入力';
+    el.classList.add('empty');
+  }
+}
+
+['companyName','fiscalPeriod','createdDate','authorName','toName','bizContent','specialNotes','progress']
+  .forEach(id => $(id).addEventListener('input', updatePreview));
+
+/* ---------------- ファイルアップロード ---------------- */
+const dropzone = $('dropzone');
+const fileInput = $('fileInput');
+dropzone.addEventListener('click', ()=>fileInput.click());
+dropzone.addEventListener('dragover', e=>{e.preventDefault(); dropzone.classList.add('drag');});
+dropzone.addEventListener('dragleave', ()=>dropzone.classList.remove('drag'));
+dropzone.addEventListener('drop', e=>{
+  e.preventDefault();
+  dropzone.classList.remove('drag');
+  handleFiles(e.dataTransfer.files);
+});
+fileInput.addEventListener('change', e=>handleFiles(e.target.files));
+
+async function handleFiles(fileListRaw){
+  const files = Array.from(fileListRaw).filter(f=>f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
+  for(const f of files){
+    try{
+      const buf = await f.arrayBuffer();
+      const doc = await PDFLib.PDFDocument.load(buf, {ignoreEncryption:true});
+      uploadedFiles.push({name:f.name, arrayBuffer:buf, pageCount:doc.getPageCount()});
+    }catch(err){
+      alert(`「${f.name}」を読み込めませんでした。パスワード付きPDFの可能性があります。`);
+      console.error(err);
+    }
+  }
+  renderFileList();
+  updatePreview();
+}
+
+function renderFileList(){
+  const box = $('fileList');
+  box.innerHTML = '';
+  uploadedFiles.forEach((f,i)=>{
+    const row = document.createElement('div');
+    row.className = 'file-item';
+    row.innerHTML = `
+      <span class="fname" title="${f.name}">${f.name}</span>
+      <span class="fpages">${f.pageCount}p</span>
+      <span class="order-btns">
+        <button data-act="up" data-i="${i}" title="上へ">▲</button>
+        <button data-act="down" data-i="${i}" title="下へ">▼</button>
+      </span>
+      <button data-act="remove" data-i="${i}" title="削除">✕</button>
+    `;
+    box.appendChild(row);
+  });
+  box.querySelectorAll('button').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const i = parseInt(btn.dataset.i);
+      const act = btn.dataset.act;
+      if(act === 'remove'){ uploadedFiles.splice(i,1); }
+      if(act === 'up' && i>0){ [uploadedFiles[i-1], uploadedFiles[i]] = [uploadedFiles[i], uploadedFiles[i-1]]; }
+      if(act === 'down' && i<uploadedFiles.length-1){ [uploadedFiles[i+1], uploadedFiles[i]] = [uploadedFiles[i], uploadedFiles[i+1]]; }
+      renderFileList();
+      updatePreview();
+    });
+  });
+}
+
+/* ---------------- PDF生成 ---------------- */
+async function sectionToPdfBytes(sectionEl){
+  const canvas = await html2canvas(sectionEl, {scale:2, backgroundColor:'#ffffff', useCORS:true});
+  const imgData = canvas.toDataURL('image/jpeg', 0.95);
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({unit:'mm', format:'a4', orientation:'portrait'});
+  const pageWidthMM = 210, pageHeightMM = 297;
+  const imgWidthMM = pageWidthMM;
+  const imgHeightMM = canvas.height * imgWidthMM / canvas.width;
+
+  // レンダリング誤差で数mmだけはみ出すことがあるため、
+  // 実質的に中身のない次ページは作らない(閾値5mm)
+  const OVERFLOW_TOLERANCE_MM = 5;
+  let heightLeft = imgHeightMM;
+  let position = 0;
+  pdf.addImage(imgData, 'JPEG', 0, position, imgWidthMM, imgHeightMM);
+  heightLeft -= pageHeightMM;
+  while(heightLeft > OVERFLOW_TOLERANCE_MM){
+    position = heightLeft - imgHeightMM;
+    pdf.addPage();
+    pdf.addImage(imgData, 'JPEG', 0, position, imgWidthMM, imgHeightMM);
+    heightLeft -= pageHeightMM;
+  }
+  return pdf.output('arraybuffer');
+}
+
+async function appendPdfBytes(targetDoc, bytes){
+  const src = await PDFLib.PDFDocument.load(bytes, {ignoreEncryption:true});
+  const pages = await targetDoc.copyPages(src, src.getPageIndices());
+  pages.forEach(p => targetDoc.addPage(p));
+}
+
+function setStatus(msg){ $('statusLine').textContent = msg; }
+
+$('generateBtn').addEventListener('click', async () => {
+  const btn = $('generateBtn');
+  btn.disabled = true;
+  try{
+    setStatus('概要・現状進捗ページを作成中…');
+    const overviewBytes = await sectionToPdfBytes($('page-overview'));
+
+    setStatus('決算書PDFと結合中…');
+    const finalDoc = await PDFLib.PDFDocument.create();
+    await appendPdfBytes(finalDoc, overviewBytes);
+    for(const f of uploadedFiles){
+      await appendPdfBytes(finalDoc, f.arrayBuffer);
+    }
+
+    const finalBytes = await finalDoc.save();
+    const blob = new Blob([finalBytes], {type:'application/pdf'});
+    const url = URL.createObjectURL(blob);
+    const company = $('companyName').value.trim() || '提案資料';
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${company}_提案検討資料.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+
+    setStatus('完了しました。ダウンロードフォルダをご確認ください。');
+  }catch(err){
+    console.error(err);
+    setStatus('エラーが発生しました。コンソールをご確認ください。');
+    alert('PDF生成中にエラーが発生しました。\n' + err.message);
+  }finally{
+    btn.disabled = false;
+  }
+});
+
+updatePreview();
+</script>
+</body>
+</html>
